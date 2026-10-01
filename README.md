@@ -28,6 +28,88 @@ npm run dev          # 起本地服务，改代码即时生效
 
 ---
 
+## 这个项目怎么构建、怎么上线
+
+**GitHub 上这个仓库只是模板，不参与构建。**
+
+整个项目只有一条链路：**在你自己的电脑上构建，然后推到你自己的 Cloudflare Pages**。
+三个地方各管各的：
+
+| | 在哪 | 干什么 |
+|---|---|---|
+| **GitHub** | 云端 | 存代码、给别人看和 fork。`.github/workflows/ci.yml` 每次推送后只验证「代码还构建得起来吗」，**不部署** |
+| **你的电脑** | 本地 | 唯一有照片和 `captions.json` 的地方，**也是唯一能构建出成品的地方** |
+| **Cloudflare Pages** | 云端 | 接住 `npm run deploy` 推上去的 `dist/`，也就是你线上那个站 |
+
+**为什么 CI 不负责部署：** 仓库里**没有照片**（`.gitignore` 挡掉了，理由见
+「部署」一节）。CI 从仓库构建出来是一面**占位墙**——`dist/photos/` 是空的，
+让它去覆盖正式站等于把照片全删了。所以构建和上线都留在本地。
+
+于是分工很清楚：
+
+- **你自己**：本地换照片、改文案 → `npm run deploy` → 上线
+- **别人**：clone 下来 → 看到一面占位墙 → 换成自己的照片 → 部署到**他们自己的** Cloudflare
+
+---
+
+## 日常维护：四步
+
+全在本地，就这一条链路。
+
+### (a) 把照片放进 `photos/`
+
+文件名**开头的数字就是它在墙上的位置**：
+
+```
+photos/1x.jpg    →  第 1 位
+photos/2x.jpg    →  第 2 位
+photos/12x.jpg   →  第 12 位
+```
+
+只放新的那几张也行，其余位置继续用占位图。细节见下面「一、放照片」。
+
+### (b) 改 `captions.json`
+
+白条上那句短句（`caption`）和翻到背面的故事（`story`）。key 是**去掉扩展名的
+文件名**——`photos/1x.jpg` 就写 `"1x"`。细节见下面「二、写文案」。
+
+### (c) 构建
+
+```bash
+npm run photos     # ← 只有「新增或替换了照片」才需要跑这一步
+npm run build
+```
+
+`npm run photos` 负责把 HEIC/JPEG 转成三档 WebP、取主色、更新照片清单，比较慢，
+所以单独拎出来。**照片没动就可以跳过它。**
+
+### (d) 上线
+
+```bash
+npm run deploy
+```
+
+`npm run deploy` 内部就是 `npm run build` + `wrangler pages deploy`，
+所以 **(c) 里的 `npm run build` 可以省掉**，会被自动带上。
+
+### 合起来看
+
+```bash
+# 平时只改文案、或者只改代码：
+npm run deploy
+
+# 加了新照片：
+npm run photos && npm run deploy
+```
+
+跑完打开 **https://national-day-wall.pages.dev** 就是最新的。
+
+> fork 这个仓库的人：上面这个域名是你自己的域名（第 (a) 步之前先在
+> `index.html` 和 `package.json` 里换掉，见「四、把这面墙改成你自己的」）。
+> 第一次用要先 `npx wrangler login`，见「三、部署」。
+
+---
+
 ## 一、放照片
 
 ### 命名规则：文件名开头的数字就是它在墙上的位置
