@@ -219,8 +219,12 @@ async function main() {
     const file = slotOf.get(slot);
     if (!file) {
       const carried = prevAt.get(slot);
-      if (!carried) {
-        console.log(`  ! 第 ${slot} 位既没有照片也没有可沿用的条目，这一位空着`);
+      // 沿用之前必须确认它指向的那张图还在。否则你从 photos/ 里删掉一张照片、
+      // 或者手动清了产物之后，这一位会继续指向已经不存在的文件——页面上就是
+      // 一块空白，而三个脚本全都返回成功，没有任何报错。
+      const asset = carried?.thumb ? path.join(OUT, path.basename(carried.thumb)) : "";
+      if (!carried || !asset || !existsSync(asset)) {
+        console.log(`  ! 第 ${slot} 位没有照片，也没有可沿用的占位图，这一位空着`);
         continue;
       }
       at[slot] = { carried };
