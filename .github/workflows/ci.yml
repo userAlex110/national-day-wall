@@ -19,11 +19,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # 用大版本号（v7）而不是 v7.0.1：大版本标签会在同一个 major 里浮动，
+      # 补丁和小版本自动跟上，不用手动改。破坏性变更会另开 major。
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 22 # 项目用的 Node，和 action 自己跑在哪个 Node 上是两回事
           cache: npm
 
       - run: npm ci
