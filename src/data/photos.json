@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-01T13:52:15.815Z",
+  "generated": "2026-10-01T13:57:14.696Z",
   "demo": false,
   "photos": [
     {
@@ -29,17 +29,17 @@
       "story": "在鹿岛生活休息区拍摄"
     },
     {
-      "id": "p03",
+      "id": "DSC_test",
       "page": 3,
-      "shot": 3,
-      "thumb": "/photos/p03.svg",
-      "card": "/photos/p03.svg",
-      "full": "/photos/p03.svg",
-      "w": 900,
-      "h": 1200,
-      "color": "#4B4E63",
-      "caption": "人生天地间，忽如远行客。",
-      "story": "三十九度的下午，蝉叫得人发慌。我们在桥洞底下躲了半个钟头，看船一只只过去。船夫戴着草帽，也不看我们。后来起了风，天就阴了，才敢往外走。走到街口的时候开始掉雨点，砸在地上一个个圆印子，很快就连成一片了。我们没带伞，跑了几步，又不跑了，反正衣服早就湿透了。"
+      "shot": 1,
+      "thumb": "/photos/DSC_test.thumb.webp",
+      "card": "/photos/DSC_test.card.webp",
+      "full": "/photos/DSC_test.full.webp",
+      "w": 3072,
+      "h": 4096,
+      "color": "#364756",
+      "caption": "",
+      "story": ""
     },
     {
       "id": "p04",
