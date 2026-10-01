@@ -10,9 +10,16 @@ preview/
 .dev.vars
 .og.tmp.svg
 
-# 真实照片：体积大，且各人本地的相机原图不一样，
-# 源图放 public/photos/ 由 npm run photos 生成，不进版本库
+# 真实照片：体积大，且各人本地的相机原图不一样。
+#
+# 注意这一条会同时匹配 photos/ 和 public/photos/ —— 后者是 npm run photos
+# 生成出来的 webp。如果想让生成物进版本库（clone 下来就能直接 build），
+# 把它拆成 `/photos/` 和 `!/public/photos/` 两条。
 photos/
+
+# prepare-photos.mjs 的增量缓存：记的是本机文件的 mtime + size，
+# 换台机器就完全失效，不该进版本库
+.cache.json
 
 # 系统
 .DS_Store

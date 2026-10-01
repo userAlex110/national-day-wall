@@ -2,14 +2,20 @@
  * 真照片管线。
  *
  * 用法：把照片丢进 photos/，跑 `npm run photos`，然后 `npm run deploy`。
- * 链接不变。
+ *
+ * 文件名开头的数字就是它在墙上的位置：1x.jpg 放第 1 位、5x.jpg 放第 5 位。
+ * 所以可以一张一张慢慢攒——放几张就换掉几位，剩下的位置保持原样
+ * （通常是 make-demo-photos.mjs 铺的占位图）。墙上默认留 21 个位置，
+ * 文件名里的数字超过 21 就以文件名为准。
  *
  * 为什么要有这个脚本：iPhone 拍出来是 HEIC，浏览器基本不认（Safari 认，微信不认）。
  * 直接把原图扔进 public/ 的话，一是体积，二是格式。所以这一步统一转成 WebP 三档，
- * 顺便把 EXIF 的拍摄时间抠出来当「10月X日拍」，再取一个主色防止图片加载前白闪。
+ * 顺便取一个主色防止图片加载前白闪。
  *
  * 增量：按 mtime + size 记在 .cache.json 里。没动过的照片直接复用上次的结果，
  * 所以补一张照片重跑只要一两秒，不用重转全部。
+ *
+ * 文案（白条短句 + 背面故事）不在这里写，在根目录的 captions.json 里，见 main() 的注释。
  */
 
 import { readdir, readFile, writeFile, stat, mkdir, unlink } from "node:fs/promises";
@@ -134,6 +140,14 @@ async function processOne(file, stat_) {
   };
 }
 
+/**
+ * 墙上一共留几个位置。文件名开头的数字超过它就以文件名为准。
+ *
+ * 文件名开头的数字就是它在墙上的位置：1x.jpg 放第 1 位、5x.jpg 放第 5 位。
+ * 所以你可以一张一张慢慢攒——放几张就换掉几位，剩下的位置保持原样（通常是占位图）。
+ */
+const SLOTS = 21;
+
 async function main() {
   if (!existsSync(SRC)) {
     console.log("photos/ 还不存在，新建一个再跑。");
@@ -153,10 +167,67 @@ async function main() {
   // 而默认的字典序会把 10x 排在 2x 前面，1x 掉到第 11 位，墙上顺序全乱。
   files.sort((a, b) => a.localeCompare(b, "zh", { numeric: true }));
 
-  const cache = await loadCache();
-  const results = [];
+  // ── 每个文件落在第几位 ──────────────────────────────────────────────
+  const slotOf = new Map(); // 位置（1 起）-> 文件名
+  const loose = []; // 文件名开头没有数字的
+  for (const f of files) {
+    const m = /^(\d+)/.exec(f);
+    const n = m ? Number(m[1]) : 0;
+    if (n < 1) {
+      loose.push(f);
+      continue;
+    }
+    if (slotOf.has(n)) {
+      console.log(`  ! ${f} 和第 ${n} 位重号，这张跳过`);
+      continue;
+    }
+    slotOf.set(n, f);
+  }
 
-  for (const [i, file] of files.entries()) {
+  const highest = slotOf.size ? Math.max(...slotOf.keys()) : 0;
+  const total = Math.max(SLOTS, highest + loose.length);
+  // 没有数字前缀的，按名字顺序补到最前面空着的位置上
+  for (const f of loose) {
+    for (let i = 1; i <= total; i++) {
+      if (!slotOf.has(i)) {
+        slotOf.set(i, f);
+        console.log(`  · ${f} 没有数字前缀，放到第 ${i} 位`);
+        break;
+      }
+    }
+  }
+
+  // ── 空着的位置沿用上一次同一位置的条目 ──────────────────────────────
+  // 通常那就是 make-demo-photos.mjs 铺的占位图，所以「放几张就换几位」是成立的。
+  // 想把某一位彻底清掉：把 photos.json 里那一项删了再跑，或者 npm run demo 重铺。
+  let prev = { photos: [] };
+  if (existsSync(JSON_OUT)) {
+    try {
+      prev = JSON.parse(await readFile(JSON_OUT, "utf8"));
+    } catch {
+      console.log("  ! 现有的 photos.json 读不出来，这次没有占位图可沿用");
+    }
+  }
+  const prevAt = new Map((prev.photos ?? []).map((p) => [p.page, p]));
+
+  const cache = await loadCache();
+  const at = new Array(total + 1); // 位置 -> { real: photo } | { carried: entry }
+  let realCount = 0;
+  let carriedCount = 0;
+
+  for (let slot = 1; slot <= total; slot++) {
+    const file = slotOf.get(slot);
+    if (!file) {
+      const carried = prevAt.get(slot);
+      if (!carried) {
+        console.log(`  ! 第 ${slot} 位既没有照片也没有可沿用的条目，这一位空着`);
+        continue;
+      }
+      at[slot] = { carried };
+      carriedCount++;
+      continue;
+    }
+
     const src = path.join(SRC, file);
     const st = await stat(src);
     const id = path.basename(file, path.extname(file)).replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -164,45 +235,58 @@ async function main() {
 
     const cached = cache[id];
     if (cached && cached.key === key) {
-      results.push(cached.photo);
-      console.log(`  · ${id} （没动过，跳过）`);
+      at[slot] = { real: cached.photo };
+      console.log(`  · ${id} → 第 ${slot} 位（没动过，跳过）`);
+      realCount++;
       continue;
     }
 
-    process.stdout.write(`  … ${id}\r`);
+    process.stdout.write(`  … ${id} → 第 ${slot} 位\r`);
     const photo = await processOne(file, st);
-    // 没有 EXIF 的，按它在列表里的位置折算一个大致拍摄日（10月1号往前）
+    // 没有 EXIF 的，按它落在第几位折算一个大致拍摄日（10月1号往前）
     if (photo.shot == null) {
-      photo.shot = Math.min(7, Math.floor(i * 7 / files.length) + 1);
+      photo.shot = Math.min(7, Math.floor(((slot - 1) * 7) / total) + 1);
       photo.exifDate = null;
     }
     cache[id] = { key, photo };
-    results.push(photo);
+    at[slot] = { real: photo };
+    realCount++;
   }
 
-  // photos.json：page = 索引 + 1，页号就是第几张照片
-  const photos = results.map((p, i) => ({
-    id: p.id,
-    page: i + 1,
-    shot: p.shot,
-    thumb: p.thumb,
-    card: p.card,
-    full: p.full,
-    w: p.w,
-    h: p.h,
-    color: p.color,
-    caption: "", // 正面白边上那句话，写在根目录的 captions.json 里
-    story: "", // 翻到背面看到的那段故事，同样写在 captions.json 里
-  }));
+  // photos.json：page 就是它落在第几位
+  const photos = [];
+  for (let slot = 1; slot <= total; slot++) {
+    const e = at[slot];
+    if (!e) continue;
+    if (e.carried) {
+      photos.push({ ...e.carried, page: slot });
+      continue;
+    }
+    const p = e.real;
+    photos.push({
+      id: p.id,
+      page: slot,
+      shot: p.shot,
+      thumb: p.thumb,
+      card: p.card,
+      full: p.full,
+      w: p.w,
+      h: p.h,
+      color: p.color,
+      caption: "", // 正面白边上那句话，写在根目录的 captions.json 里
+      story: "", // 翻到背面看到的那段故事，同样写在 captions.json 里
+    });
+  }
 
   // 文案放在根目录的 captions.json 这个侧车文件里，**不要直接改 photos.json**——
   // 这个脚本每次运行都会重新生成 photos.json，写在那里会被下一次 npm run photos 覆盖掉。
   //
-  //   { "p01": "白边上那句话",
-  //     "p02": { "caption": "短句", "story": "背面那段五六行的故事" } }
+  //   { "1x": "白边上那句话",
+  //     "2x": { "caption": "短句", "story": "背面那段五六行的故事" } }
   //
   // 老的纯字符串写法仍然支持。
   const withCaptions = path.join(ROOT, "captions.json");
+  let captioned = 0;
   if (existsSync(withCaptions)) {
     const map = JSON.parse(await readFile(withCaptions, "utf8"));
     for (const p of photos) {
@@ -214,7 +298,10 @@ async function main() {
         if (typeof v.caption === "string") p.caption = v.caption;
         if (typeof v.story === "string") p.story = v.story;
       }
+      if (p.caption || p.story) captioned++;
     }
+  } else {
+    console.log("  · 没有 captions.json，白条和背面都会是空的（格式见本文件注释）");
   }
 
   await writeFile(JSON_OUT, JSON.stringify({
@@ -224,7 +311,10 @@ async function main() {
   }, null, 2));
   await saveCache(cache);
 
-  console.log(`\n${photos.length} 张照片 → public/photos/ 和 src/data/photos.json`);
+  const gaps = total - realCount - carriedCount;
+  console.log(`\n墙上 ${total} 个位置 → public/photos/ 和 src/data/photos.json`);
+  console.log(`  真照片 ${realCount} 张${carriedCount ? `，沿用原有条目 ${carriedCount} 个` : ""}${gaps ? `，空位 ${gaps} 个` : ""}`);
+  if (captioned) console.log(`  其中 ${captioned} 张在 captions.json 里写了文案`);
   console.log("接下来 npm run deploy。");
 }
 

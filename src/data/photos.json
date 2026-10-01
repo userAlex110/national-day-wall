@@ -1,32 +1,32 @@
 {
-  "generated": "2026-10-01T12:48:45.984Z",
-  "demo": true,
+  "generated": "2026-10-01T13:34:55.603Z",
+  "demo": false,
   "photos": [
     {
-      "id": "p01",
+      "id": "1x",
       "page": 1,
       "shot": 1,
-      "thumb": "/photos/p01.svg",
-      "card": "/photos/p01.svg",
-      "full": "/photos/p01.svg",
-      "w": 900,
-      "h": 1200,
-      "color": "#3E5063",
-      "caption": "出门前才发现忘了带伞。",
-      "story": "早上出门的时候天还是阴的，走到一半太阳就出来了。伞一直没打开，倒是被用来挡了两回车。"
+      "thumb": "/photos/1x.thumb.webp",
+      "card": "/photos/1x.card.webp",
+      "full": "/photos/1x.full.webp",
+      "w": 3072,
+      "h": 4096,
+      "color": "#364756",
+      "caption": "",
+      "story": ""
     },
     {
-      "id": "p02",
+      "id": "2x",
       "page": 2,
-      "shot": 2,
-      "thumb": "/photos/p02.svg",
-      "card": "/photos/p02.svg",
-      "full": "/photos/p02.svg",
-      "w": 900,
-      "h": 675,
-      "color": "#5B4A55",
-      "caption": "相机里唯一一张糊的也是这张。",
-      "story": "那家便利店门口有个长椅，我们坐着把刚买的水喝完。看进出的人，猜他们要去哪儿。"
+      "shot": 1,
+      "thumb": "/photos/2x.thumb.webp",
+      "card": "/photos/2x.card.webp",
+      "full": "/photos/2x.full.webp",
+      "w": 3072,
+      "h": 4096,
+      "color": "#435C6F",
+      "caption": "",
+      "story": ""
     },
     {
       "id": "p03",
