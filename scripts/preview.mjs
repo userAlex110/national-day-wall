@@ -202,6 +202,34 @@ const PROBE = `JSON.stringify((() => {
     worstCrop = Math.max(worstCrop, Math.abs(1 - got / src));
   }
 
+  // 白条上那句 caption 的验收。
+  //  · bandMiss —— 白条高度必须正好是贴纸宽的 13%：sticker.ts 的 FRAME_BOTTOM、
+  //    wall.css 的 padding 和 .sticker__band 的 height 是三个各自写死的数，
+  //    这条是它们有没有漂掉的唯一自动化证据。
+  //  · bandOver —— 那一行真的要塞得进白条。字号是 min(13px, 0.086·--w)，
+  //    这个公式要是被改坏了，手机上那行字会顶出相纸。
+  //  · bandClipped 是**诊断不是失败**：一行装不下的句子被省略号截掉本来就是设计，
+  //    但这个数决定 captions.json 里的话该写多长，所以要看得见。
+  //
+  // 判截断必须看 scrollHeight，不能看 scrollWidth：-webkit-line-clamp 是先把
+  // 文字**换行**再把多出来的行裁掉，横向压根不溢出，scrollWidth 永远等于 clientWidth。
+  // loupe.ts 的 syncClamp() 用的也是同一招。offsetHeight/offsetWidth 的理由同上：
+  // 包围盒会被 rotateZ 撑大。
+  let bandMiss = 0, bandOver = 0, bandFontMin = 1e9, bandFontMax = 0, bandClipped = 0, banded = 0;
+  for (const s of stickers) {
+    const band = s.querySelector('.sticker__band');
+    const text = band && band.querySelector('.sticker__band-text');
+    if (!band || !text || !text.textContent) continue;
+    banded++;
+    bandMiss = Math.max(bandMiss, Math.abs(band.offsetHeight - s.offsetWidth * 0.13));
+    if (text.offsetHeight > band.offsetHeight) bandOver++;
+    const f = parseFloat(getComputedStyle(text).fontSize);
+    bandFontMin = Math.min(bandFontMin, f);
+    bandFontMax = Math.max(bandFontMax, f);
+    if (text.scrollHeight > text.clientHeight + 1) bandClipped++;
+  }
+  if (!banded) bandFontMin = 0;
+
   const wallArea = Math.max(1, (p.r - p.l) * p.h);
   return {
     vw: innerWidth, vh: innerHeight,
@@ -215,6 +243,13 @@ const PROBE = `JSON.stringify((() => {
     maxStickerW: Math.round(maxW),
     photoAreaPct: Math.round((photoArea / wallArea) * 1000) / 10,
     worstCropPct: Math.round(worstCrop * 1000) / 10,
+    // 白条
+    banded,
+    bandMissPx: Math.round(bandMiss),
+    bandOver,
+    bandClipped,
+    bandFontMin: Math.round(bandFontMin * 10) / 10,
+    bandFontMax: Math.round(bandFontMax * 10) / 10,
   };
 })())`;
 
@@ -259,6 +294,14 @@ function verdict(m) {
   // 白边是往里压的：可见照片区必须和原图同比例，否则 object-fit: cover 正在裁照片。
   // 这条是 sticker.ts 里 framedH() 的验收——容差 2%，留一点 getBoundingClientRect 的取整。
   if (m.worstCropPct > 2) fails.push(`照片被裁 ${m.worstCropPct}%（可见区比例和原图对不上）`);
+  // 白条高度必须是贴纸宽的 13%（容差 1px，取整）。sticker.ts 的 FRAME_BOTTOM、
+  // wall.css 的 padding、.sticker__band 的 height 是三处各写一份的数，
+  // 这条就是它们有没有漂掉的唯一自动化证据。
+  if (m.bandMissPx > 1) fails.push(`白条高不对，离贴纸宽的 13% 差了 ${m.bandMissPx}px`);
+  // 那一行字要真的塞得进白条——字号公式被改坏的直接信号
+  if (m.bandOver > 0) fails.push(`${m.bandOver} 张的白条文字顶出了相纸`);
+  if (m.bandFontMax > 13.5) fails.push(`白条字号 ${m.bandFontMax}px 超过了 13px 的上限`);
+  if (m.photos > 0 && m.banded < m.photos) fails.push(`${m.photos - m.banded} 张没有白条`);
   return fails;
 }
 
@@ -280,6 +323,12 @@ for (const g of groups) {
       `   照片 ${r.m.photos} 张（占墙面 ${r.m.photoAreaPct}%）` +
         `   贴纸宽 ${r.m.minStickerW}–${r.m.maxStickerW}px` +
         `   最大裁切 ${r.m.worstCropPct}%`,
+    );
+    // 「装不下 N/21」是诊断不是失败：一行放不完的句子被省略号截掉本来就是设计，
+    // 但这个数决定 captions.json 里的话该写多长，所以要看得见。
+    console.log(
+      `   白条字号 ${r.m.bandFontMin}–${r.m.bandFontMax}px` +
+        `   一句话装不下的 ${r.m.bandClipped}/${r.m.banded} 张`,
     );
     console.log(f.length ? `   ❌ ${f.join("；")}` : "   ✅ 体检全过");
   }

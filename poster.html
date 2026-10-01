@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- 仅开发用：把导出那张图直接渲染出来铺满视口，方便调 src/share/poster.ts 里
+     SLOTS 那一摞怎么摆。Vite 只以 index.html 为入口，所以这个文件不会进 build。
+
+     npm run dev
+     http://localhost:5173/poster.html?light=night     ← 看夜里的墙
+
+     截图：
+     node scripts/shoot.mjs 1242x1656 --vt=20000 \
+       --url=http://localhost:5173/poster.html?light=day --out=/tmp/poster -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>导出图预览（仅开发）</title>
+    <link rel="stylesheet" href="/src/styles/fonts.css" />
+    <link rel="stylesheet" href="/src/styles/tokens.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1b1a17;
+      }
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      p {
+        margin: 0;
+        padding: 16px;
+        color: #e8e3d8;
+        font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import { renderPoster } from "/src/share/poster.ts";
+      import data from "/src/data/photos.json";
+
+      // 和主页面 ?light= 一个意思：让 body 拿到 night 那几个变量覆盖，
+      // poster.ts 是从 document.body 上读 token 的。
+      const light = new URLSearchParams(location.search).get("light");
+      if (light === "night") document.body.classList.add("night");
+
+      const t0 = performance.now();
+      renderPoster(data.photos)
+        .then((blob) => {
+          const img = document.createElement("img");
+          img.src = URL.createObjectURL(blob);
+          document.body.append(img);
+          console.log(
+            `[poster] ${blob.type} ${(blob.size / 1024).toFixed(0)}KB ` +
+              `${Math.round(performance.now() - t0)}ms`,
+          );
+        })
+        .catch((err) => {
+          // 失败要看得见，不能留一张黑屏让人猜
+          const p = document.createElement("p");
+          p.textContent = `导出失败：${err?.stack ?? err}`;
+          document.body.append(p);
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>

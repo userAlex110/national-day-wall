@@ -184,6 +184,57 @@
   box-shadow: 0 0 0 1px rgb(43 38 32 / 0.07);
 }
 
+/* ── 白条上那句话 ─────────────────────────────────────────────────────
+   和 loupe.css 的 .loupe__band / .loupe__band-text 是同一个东西在两个缩放层级
+   上的投影：外层负责垂直居中，内层负责截断（-webkit-line-clamp 要求
+   display:-webkit-box，和 flex 居中没法在同一个元素上共存）。改一处要想着另一处。
+
+   四条边全部用 --w 算，不写百分比。绝对定位子元素的 left/right 按包含块的【宽】
+   解析，height 却按【高】解析——而上面那条 padding: 13% 是永远按宽的。写成
+   height: 13% 会得到 0.13 × --h，白条当场跑到照片中间去。
+   这组数字必须和 .sticker--print .sticker__face 的 padding、以及 sticker.ts 的
+   FRAME_X / FRAME_TOP / FRAME_BOTTOM 三处同源。 */
+.sticker__band {
+  position: absolute;
+  left: calc(var(--w) * 0.035);
+  right: calc(var(--w) * 0.035);
+  bottom: 0;
+  height: calc(var(--w) * 0.13);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  /* 和 .tape 一样把手势让给 .sticker：墙上那一下要么是拖、要么是点开，
+     文字不该变成拖不动的死角，也不该被拖选出一片蓝。 */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 字号跟贴纸宽度走，13px 封顶（桌面贴纸 160~283px，0.086·w 早就超过 13，
+   于是桌面稳定落在 13px，和 loupe 里那行字一样大；手机上约 8.5~10px）。
+   固定 13px 是不行的：白条高永远是 0.13·w，390×844 的手机上贴纸 99px →
+   白条 12.9px，而 13px 的字行盒要 16.3px，直接被裁掉一行。
+   实测 8 档设备（360/390/430/834/1280/1440/1920/横屏 844），
+   min(13px, 0.086·w) × line-height 1.25 全部塞得进，最紧的一档还剩 2.3px。
+   scripts/preview.mjs 的探针会替我们盯着这条。 */
+.sticker__band-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  width: 100%;
+  font-family: var(--font-hand);
+  font-size: min(13px, calc(var(--w) * 0.086));
+  line-height: 1.25;
+  color: rgb(43 38 32 / 0.8);
+  word-break: break-word;
+}
+
+/* 没写 caption 的那几位，别留一条空白的行盒 */
+.sticker__band-text:empty {
+  display: none;
+}
+
 /* ── 和纸胶带 ─────────────────────────────────────────────────────── */
 .tape {
   position: absolute;

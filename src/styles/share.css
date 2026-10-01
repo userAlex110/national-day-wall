@@ -1,0 +1,80 @@
+/* ── 右下角那枚「存成一张图」 ─────────────────────────────────────────
+   这个页面本来一点 UI 都没有（整页就是一面墙，没有顶栏也没有底栏）。
+   所以这枚按钮必须小、必须像墙上本来就有的东西：一张压着和纸胶带的纸片，
+   用的还是 .loupe__flip 那一套——--paper 打底、--paper-shadow 那层纸感投影、
+   和纸上同一卷 .tape。
+
+   固定定位，而且必须挂在 body 上，不能放进 .stage / .wall：
+     · .wall.is-scrollable 有 overflow-y: auto，窄屏上会把固定定位的后代裁掉
+     · .wall__plane 的 pointer-events: none 是会**继承**的（README 记着踩过三次）
+   挂 body 两个问题一起绕开，窄屏墙内滚动时它也不跟着跑。
+
+   z-index 20：压在 .grain(1) / .stage(2) / .light(3) 之上，所以夜里那盏灯是
+   照在它上面而不是盖在它上面；又低于 .loupe(40)，浮层永远赢。
+   底部留出 env(safe-area-inset-bottom)：index.html 开了 viewport-fit=cover，
+   不补这一下会被 iPhone 的 home indicator 压住。 */
+.share {
+  position: fixed;
+  right: calc(clamp(14px, 2.4vw, 34px) + env(safe-area-inset-right, 0px));
+  bottom: calc(clamp(14px, 2.6vh, 26px) + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  transition: opacity 0.28s ease, visibility 0s linear 0s;
+}
+
+/* loupe 打开时让路。visibility: hidden 顺带把它从 Tab 顺序和读屏里摘掉，
+   否则 scrim 虽然盖住了它，键盘还是聚焦得上去。 */
+.share.is-obscured {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.28s ease, visibility 0s linear 0.28s;
+}
+
+.share__btn {
+  display: block;
+  min-height: 44px; /* 苹果定的最小触摸目标 */
+  padding: 0 18px;
+  border: 0;
+  border-radius: 1px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px/1 var(--font-hand);
+  box-shadow: var(--paper-shadow);
+  cursor: pointer;
+  /* 干掉 iOS 上双击缩放的 300ms 等待 */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.share__btn:hover {
+  background: var(--indigo);
+  color: var(--paper);
+}
+
+.share__btn[data-state="working"] {
+  cursor: progress;
+}
+
+/* 出错了不换颜色。朱砂红在这个项目里是留给照片背面那行日期的，
+   tokens.css 顶上写着「唯一的一处暖色」——不该为一句提示破例，
+   字本身换了就够醒目了。 */
+.share__btn[data-state="error"] {
+  color: var(--ink-60);
+}
+
+/* 胶带压在纸片上沿、探出去一截。用的是 wall.css 里 .tape 本体，
+   这里只改它那几个原本和贴纸尺寸绑在一起的值：
+   --tx 走 left 的 50%，再靠 translate: -50% 0 居中。 */
+.share .tape {
+  top: -10px;
+  --tx: 50%;
+  --tilt: -3.2deg;
+  width: 62px;
+  height: 20px;
+}

@@ -47,10 +47,12 @@ const GAP_Y = 14;
  * 乘一个 scale，像素 padding 不跟着缩，白边里的照片就又被裁了；
  * 百分比 padding 按 containing block 的宽度解析，而 .sticker 的宽就是 --w，
  * 所以任何尺寸下都准。
+ *
+ * card.ts 也会 import 这三个常量去画导出图，所以是 export 的。
  */
-const FRAME_X = 0.035; // 左右白边
-const FRAME_TOP = 0.035; // 上白边
-const FRAME_BOTTOM = 0.13; // 下白边，拍立得那条能写字的宽边
+export const FRAME_X = 0.035; // 左右白边
+export const FRAME_TOP = 0.035; // 上白边
+export const FRAME_BOTTOM = 0.13; // 下白边，拍立得那条能写字的宽边
 
 /**
  * 让人从白边里看到的照片区域，正好保持原图比例所需的外框高度。
@@ -59,7 +61,7 @@ const FRAME_BOTTOM = 0.13; // 下白边，拍立得那条能写字的宽边
  * 可见照片区域不是一回事：可见区是 (w - 2·FRAME_X·w) 宽，乘 ratio 得到它的高，
  * 再加上下白边才是外框高。不这么算，object-fit: cover 就要把每张照片裁掉一块。
  */
-function framedH(w: number, ratio: number): number {
+export function framedH(w: number, ratio: number): number {
   // 白边占掉的是宽度的一部分，所以可见区宽度要先从 w 里减掉左右两条边
   const innerW = w * (1 - FRAME_X * 2);
   // 可见区高度 = 可见区宽度 × 原图比例；外框高度 = 它 + 上下两条白边
@@ -323,6 +325,25 @@ export function mountWall(plane: HTMLElement, opts: WallOpts = {}): StickerHost 
       tape.style.setProperty("--tx", `${(rand01(p.photo.id + "x") * 46 - 23).toFixed(0)}%`);
       front.append(tape);
     }
+
+    // 白条上那句话。不点开也要读得到——只装在 loupe 里的话，墙上就只剩一块空相纸。
+    //
+    // 结构逐字对齐 loupe.ts 的 .loupe__band：外层负责垂直居中，内层负责截断。
+    // 拆成两个元素不是啰嗦——-webkit-line-clamp 要求 display:-webkit-box，
+    // 和 flex 居中在同一个元素上没法并存。两条白条本来就是同一个东西在两个缩放
+    // 层级上的投影，结构保持一致。
+    //
+    // 必须绝对定位，不能进流：.sticker__face 是 display:grid，加第二个流内子元素
+    // 会让 `img { height: 100% }` 相对 auto 行解析而塌掉，framedH() 算出来的
+    // 外框高度和可见照片区的对应关系当场作废。绝对定位落在 padding 留出的那
+    // 条白边上，一个像素的布局数学都不用动。
+    const band = document.createElement("p");
+    band.className = "sticker__band";
+    const bandText = document.createElement("span");
+    bandText.className = "sticker__band-text";
+    bandText.textContent = p.photo.caption ?? "";
+    band.append(bandText);
+    front.append(band);
 
     el.append(front);
 

@@ -12,6 +12,7 @@ import photoData from "./data/photos.json";
 import { mountTilt } from "./core/stage";
 import { layoutWall, mountWall, type Placed } from "./wall/sticker";
 import { mountLoupe } from "./wall/loupe";
+import { mountShareButton } from "./share/button";
 import { sfxPickup, unlockAudio } from "./core/sound";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -56,9 +57,16 @@ function relayout(): void {
 // ── 装配 ─────────────────────────────────────────────────────────────
 const tilt = mountTilt(planeEl, wallEl);
 
+// 得在 mountLoupe 之前建好：下面那个 onToggle 里要用它
+const share = mountShareButton({ photos });
+
 const loupe = mountLoupe({
-  // 放大时把墙按平：倾斜的透视和「凑近了看」是两件事，叠在一起读不清照片
-  onToggle: (open) => tilt.hold(open),
+  // 放大时把墙按平：倾斜的透视和「凑近了看」是两件事，叠在一起读不清照片。
+  // 顺手把右下角那枚导出按钮收起来——浮层盖是盖住了它，但 Tab 还是聚焦得上去。
+  onToggle: (open) => {
+    tilt.hold(open);
+    share.setObscured(open);
+  },
 });
 
 const wall = mountWall(planeEl, {

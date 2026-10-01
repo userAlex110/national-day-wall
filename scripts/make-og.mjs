@@ -36,6 +36,10 @@ const KAI = "Kaiti SC, STKaiti, KaiTi, cursive";
  * 白边的比例（左右/上 5%，下 13%）比墙上那张（3.5% / 13%）厚一点：
  * 这张卡片上只有三张照片，露出白边的面积大，太薄就读不出「相纸」了。
  * 宽高比交给调用方定死，所以某张是竖构图也不会把整叠顶出画布。
+ *
+ * 相纸比例的正源是 src/wall/sticker.ts 的 FRAME_X / FRAME_TOP / FRAME_BOTTOM
+ * 和 framedH()。浏览器端画同一件事的是 src/share/poster.ts，它直接 import 那几个
+ * 常量。这里是构建脚本、import 不了 TS，所以数字另写一份——改那边记得回来看这里。
  */
 function frame(p, x, y, w, h, deg) {
   const padX = Math.round(w * 0.05);
@@ -68,6 +72,10 @@ async function href(p) {
 async function stack() {
   // 只挑横图和方图。竖图铺在这里会掉出画布下沿，
   // 而且那三张本来就是背景层次，不该抢最前面那张的注意力。
+  //
+  // 网页里那版（src/share/poster.ts 的 SLOTS）不用这么挑：它每一层都按
+  // 旋转后的包围盒缩放着塞进格子，竖图横图都进得去。这张卡片是一次性排版，
+  // 手挑省事。要在网页上改摆法，改那个文件，别改这里。
   const picks = [photos[1], photos[3], photos[6]].filter(Boolean);
   let out = "";
   for (const [i, p] of picks.entries()) {
