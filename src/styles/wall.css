@@ -1,0 +1,225 @@
+/* ── 墙 ─────────────────────────────────────────────────────────────────
+   一面石灰墙 + 一层可倾斜的平面。照片贴在平面上，靠 translateZ 造深度，
+   靠轻微的 rotateY 让平面有弧度。
+   ──────────────────────────────────────────────────────────────────── */
+.wall {
+  position: relative;
+  min-height: 320px;
+  perspective: 1250px;
+  perspective-origin: 50% 42%;
+}
+
+.wall__plane {
+  position: absolute;
+  inset: 0 0 auto 0;
+  transform-style: preserve-3d;
+  /* 倾角由 rAF 弹簧驱动，不走 CSS 过渡 */
+
+  /* 平面必须从命中测试里摘出去。
+     它是 preserve-3d，而 3D 渲染上下文里的层叠顺序由三维位置决定——DOM 顺序和
+     z-index 都不作数。贴纸的 translateZ 是负的（往后推出去造视差深度），平面自己
+     在 z=0，于是整块平面浮在所有贴纸前面，把每一次点击都接走。它没有背景，所以
+     光看画面完全看不出来。实测：不加这条，全屏 6592 个采样点命中贴纸的是 0 个。
+
+     注意 pointer-events 是继承属性，所以下面的 .sticker 必须显式设回 auto，
+     否则会被一起关掉。
+
+     滚动不受影响：.wall.is-scrollable 的 overflow 在 .wall 上，而这个 + none 会让
+     触摸目标落到 .wall 本身，正好就是那个滚动容器。 */
+  pointer-events: none;
+}
+
+/* 窄屏：照片不缩到看不清，墙内自己滚 */
+.wall.is-scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wall.is-scrollable::-webkit-scrollbar {
+  display: none;
+}
+
+/* 墙上不放底板。照片本来就是拿胶带直接往墙上贴的，
+   早先铺一块巨大底板只是把「空墙」换成了「一块更大的空板」——
+   一千像素宽的纯色矩形，边缘做得再像纸也还是像没做完。
+
+   但墙也不能是一整片没颜色的灰。让它有「用过的痕迹」：
+     · 上方一道挂镜线 —— 一条水平线，说明这面墙是拿来挂东西的，
+       倾斜视差的时候它就是地平线，照片在它前面晃。
+     · 几块褪色的方形印子 —— 以前贴过东西、撕走了，太阳把那块墙晒白了。
+     · 两个钉孔。
+   全部压在 3% 不透明度以下，只在没有照片的地方显形，不跟照片抢。 */
+
+/* 褪色印子 + 钉孔。用 background 的多层，每层一个矩形，
+   位置写死（不能随机：刷新一次位置就变了，这墙就不是这面墙了）。 */
+.wall::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    /* 挂镜线：一道亮边 + 一道紧贴的暗边，才像凸出来的木条 */
+    linear-gradient(
+      rgb(255 252 244 / 0.5) 0 2px,
+      rgb(60 48 32 / 0.16) 2px 4px,
+      transparent 4px
+    ) no-repeat 0 8.5% / 100% 4px,
+
+    /* 褪色印子。必须是软的：硬边矩形一律读成「这里该放张照片」的空位框，
+       比空墙更糟。太阳晒出来的那种是边缘发虚的一团，所以用径向渐变。
+       位置写死，不能随机——刷新一次位置就变了，这墙就不是这面墙了。 */
+    radial-gradient(
+      ellipse 17% 13% at 25% 30%,
+      rgb(255 250 238 / 0.06) 0%,
+      rgb(255 250 238 / 0.028) 55%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 14% 18% at 64% 19%,
+      rgb(255 250 238 / 0.05) 0%,
+      rgb(255 250 238 / 0.022) 55%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 19% 14% at 79% 60%,
+      rgb(255 250 238 / 0.055) 0%,
+      rgb(255 250 238 / 0.025) 55%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 15% 11% at 33% 73%,
+      rgb(255 250 238 / 0.045) 0%,
+      rgb(255 250 238 / 0.02) 55%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 12% 10% at 50% 45%,
+      rgb(60 48 32 / 0.022) 0%,
+      rgb(60 48 32 / 0.008) 55%,
+      transparent 100%
+    ),
+
+    /* 两个钉孔，挂在镜线上 */
+    radial-gradient(circle at center, rgb(60 48 32 / 0.3) 0 1.6px, transparent 1.7px)
+      no-repeat 9% 8.2% / 6px 6px,
+    radial-gradient(circle at center, rgb(60 48 32 / 0.24) 0 1.6px, transparent 1.7px)
+      no-repeat 66% 8.2% / 6px 6px;
+}
+
+/* 照片不跟这些印子抢——它们都压在 5% 不透明度以下，只在空处显形。
+   早先这里有过一条「贴满之后压暗」的规则，结果是第五张贴上去的那一瞬间
+   整面墙的质感"啪"地变了一次，比留着印子更刺眼。删掉了。 */
+
+
+/* 矮视口。必须留在这个文件里：wall.css 排在 tokens.css 之后，
+   同优先级下后加载的赢，写进 tokens.css 会被上面那条 min-height 盖掉。 */
+@media (max-height: 620px) {
+  .wall {
+    min-height: min(320px, calc(100dvh - 170px));
+  }
+}
+
+/* ── 贴纸 ─────────────────────────────────────────────────────────── */
+.sticker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--w);
+  height: var(--h);
+  margin: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+  touch-action: none;
+  cursor: grab;
+  -webkit-tap-highlight-color: transparent;
+  /* 从 .wall__plane 继承下来的 none 要显式开回来，否则照片点不动 */
+  pointer-events: auto;
+}
+
+.sticker.is-dragging {
+  cursor: grabbing;
+}
+
+.sticker__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  background: var(--paper);
+  /* drop-shadow 放在叶子上：贴纸本身必须保持 preserve-3d */
+  filter: drop-shadow(
+    0 calc(2px + 15px * var(--lift, 0)) calc(5px + 28px * var(--lift, 0))
+      rgb(50 40 24 / calc(0.2 + 0.24 * var(--lift, 0)))
+  );
+}
+
+/* 全部照片都是冲印出来的拍立得，没有裸照片。
+   白边是往里压的（padding 撑在固定尺寸的 .sticker 里），所以照片可见区域比外框小一圈
+   —— sticker.ts 的 framedH() 就是按这组白边反推外框高度的，两处必须一致。
+
+   用「占 --w 的百分比」而不是像素：--w 就是 .sticker 的宽度，百分比 padding 按它解析，
+   于是 main.ts 缩放 w/h 的时候白边跟着一起缩，照片区域的比例在任何尺寸下都准。
+   写成 7px/26px 的话，缩放后白边不跟着变，比例又歪了。 */
+.sticker--print .sticker__face {
+  padding: 3.5% 3.5% 13%;
+  background: var(--paper);
+}
+
+.sticker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* 占位色：图片解码之前先垫上这张照片的主色，避免一片白闪
+     （loupe.css 里是同样的做法） */
+  background: var(--c, var(--paper-back));
+}
+
+.sticker--print img {
+  box-shadow: 0 0 0 1px rgb(43 38 32 / 0.07);
+}
+
+/* ── 和纸胶带 ─────────────────────────────────────────────────────── */
+.tape {
+  position: absolute;
+  top: -10px;
+  left: var(--tx, 50%);
+  width: 56px;
+  height: 21px;
+  translate: -50% 0;
+  rotate: var(--tilt, 0deg);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgb(255 255 255 / 0.1) 0 3px,
+      transparent 3px 7px
+    ),
+    var(--tape);
+  mix-blend-mode: multiply;
+  /* 胶带边缘不齐 */
+  clip-path: polygon(
+    2% 6%, 18% 0, 34% 5%, 52% 0, 70% 6%, 86% 1%, 100% 7%,
+    98% 93%, 84% 100%, 66% 94%, 48% 100%, 30% 94%, 14% 100%, 0 92%
+  );
+  box-shadow: 0 1px 2px rgb(50 40 24 / 0.18);
+  pointer-events: none;
+}
+
+.tape--indigo {
+  --tape: rgb(46 66 96 / 0.34);
+}
+
+.tape--mustard {
+  --tape: rgb(201 162 39 / 0.38);
+}
+
+/* ── 墙上不放底板 ───────────────────────────────────────────────────
+   这里没有「软木板」，也没有「别人留在墙上的那张纸」。
+   照片本来就是拿胶带直接往墙上贴的，铺一块巨大的底板只是把「空墙」
+   换成了「一块更大的空板」——一千像素宽的纯色矩形，边缘做得再像纸
+   也还是像没做完。让墙本身有性格就够了：粗颗粒的抹灰 + 光的落点。 */

@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# npm run devices 生成的截图与对照页（7MB 上下，每次重跑都会变）
+preview/
+
+# Wrangler / Cloudflare 本地状态
+.wrangler/
+.dev.vars
+.og.tmp.svg
+
+# 真实照片：体积大，且各人本地的相机原图不一样，
+# 源图放 public/photos/ 由 npm run photos 生成，不进版本库
+photos/
+
+# 系统
+.DS_Store
+*.log

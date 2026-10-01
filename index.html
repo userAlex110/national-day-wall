@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>国庆七天 · 照片墙</title>
+    <meta name="description" content="2026 国庆七天，照片贴满一面墙。点一下能拿起来细看。" />
+    <meta name="theme-color" content="#D6D0C2" />
+
+    <!-- 分享卡片。微信、小红书都不执行 JS，这几行是它们唯一能读到的东西，
+         所以 og.jpg 必须在构建时生成、真的躺在站点根目录（npm run og）。
+
+         换域名时改 SITE 那一处就够。下面所有地址都从它拼出来。 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="国庆七天 · 照片墙" />
+    <meta property="og:title" content="国庆七天 · 照片墙" />
+    <meta property="og:description" content="照片贴满一面墙。点一下能拿起来细看，拖着走会晃。" />
+    <meta property="og:image" content="https://national-day-wall.pages.dev/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://national-day-wall.pages.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/styles/fonts.css" />
+    <link rel="stylesheet" href="/src/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/styles/wall.css" />
+    <link rel="stylesheet" href="/src/styles/loupe.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+
+    <main class="stage">
+      <div class="wall" id="wall" aria-label="照片墙">
+        <div class="wall__plane" id="plane"></div>
+      </div>
+    </main>
+
+    <div class="light" id="light" aria-hidden="true"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

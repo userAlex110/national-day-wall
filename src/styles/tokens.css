@@ -1,0 +1,179 @@
+/* ── tokens ──────────────────────────────────────────────────────────────
+   90s 挂历的印刷感，克制到现代。
+   朱砂红是唯一的一处暖色，只允许出现在照片背面的日期上。
+   芥末黄严格控制在 3% 面积以内（和纸胶带）。
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --wall: #d6d0c2;
+  --wall-deep: #bdb5a3;
+  --paper: #f2ede1;
+  --paper-back: #e4dccb;
+  --ink: #2b2620;
+  --vermilion: #c4352a;
+  --indigo: #2e4260;
+  --mustard: #c9a227;
+
+  --ink-60: rgb(43 38 32 / 0.6);
+  --ink-32: rgb(43 38 32 / 0.32);
+  --ink-12: rgb(43 38 32 / 0.12);
+  --paper-shadow: 0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 2px 4px rgb(60 48 32 / 0.14), 0 14px 30px -14px rgb(60 48 32 / 0.4);
+  --lift-shadow: 0 4px 8px rgb(60 48 32 / 0.16), 0 34px 60px -24px rgb(60 48 32 / 0.5);
+
+  /* 标题字是子集化的 webfont（16 个字形，两个字重，6KB），全平台一致。
+     后面挂的系统字体是兜底：万一以后加了字形忘了重跑，至少不塌。
+     --font-text 是正文那一份，跟标题同族但走系统，因为正文里的字是动态的
+     （照片背面那句话），没法预先子集化。 */
+  --font-display: "Wall Display", "Songti SC", STSong, "Noto Serif SC",
+    "Source Han Serif SC", Georgia, "Times New Roman", serif;
+  --font-text: "Songti SC", STSong, "Noto Serif SC", "Source Han Serif SC",
+    Georgia, "Times New Roman", serif;
+  --font-hand: "Kaiti SC", STKaiti, KaiTi, 楷体, cursive;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+
+  /* 粗一档的抹灰：墙面不能只有一个像素级噪声，否则就是一块纯色 */
+  --mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.75'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='900' height='900' filter='url(%23m)'/%3E%3C/svg%3E");
+
+  --tape: rgb(226 214 178 / 0.72);
+  --dur-tilt: 0s; /* 弹簧驱动，不走 CSS 过渡 */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--ink);
+  /* 正文走 --font-text，不走子集化的标题字：body 上的中文有一部分是运行时才有的 */
+  font-family: var(--font-text);
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  /* 舞台占满整屏，没有别的兄弟元素跟它抢高度 */
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* 墙面：底色 + 上方来光 + 四角压暗 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(115% 75% at 50% -12%, rgb(255 252 244 / 0.8), transparent 60%),
+    radial-gradient(150% 110% at 50% 112%, var(--wall-deep), transparent 56%),
+    var(--wall);
+}
+
+/* 两层颗粒：粗抹灰给墙面体量，细颗粒给纸面质地。
+   顺序不能反 —— 细噪声叠在粗噪声上才像墙，不会像噪点图。 */
+.grain,
+.grain::after {
+  position: fixed;
+  inset: -50%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.grain {
+  background-image: var(--grain);
+  background-size: 180px 180px;
+  opacity: 0.3;
+  mix-blend-mode: multiply;
+}
+
+.grain::after {
+  content: "";
+  background-image: var(--mottle);
+  background-size: 900px 900px;
+  opacity: 0.16;
+  mix-blend-mode: multiply;
+}
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+/* 整页就是一面墙，没有顶栏也没有底栏。.stage 只负责留出四周的墙边，
+   剩下的全给 .wall。
+
+   必须留着 grid：.wall 里唯一的子元素 .wall__plane 是绝对定位的，
+   不走文档流，所以 .wall 自己撑不出高度。只有作为 grid item 被拉伸，
+   它才能拿到整屏的高度——塌成 min-height 的话 layoutWall 会以为墙很矮，
+   于是选出一堆很小的照片挤在顶上。 */
+.stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  padding: clamp(10px, 1.6vh, 22px) clamp(14px, 2.4vw, 40px);
+}
+
+/* ── 夜灯 ─────────────────────────────────────────────────────────── */
+/* 台灯：右上打下来的一束暖光，墙面整体只压一点暗 */
+.light {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.6s ease;
+  background:
+    radial-gradient(36% 32% at 72% 4%, rgb(255 210 146 / 0.26), transparent 70%),
+    linear-gradient(200deg, rgb(26 22 34 / 0.14), rgb(18 16 26 / 0.32));
+}
+
+/* 夜：暗的是墙，不是纸。灯下的纸还是亮的，不然整面墙糊成一团泥。 */
+body.night {
+  --wall: #403a30;
+  --wall-deep: #26221a;
+  --paper: #e9e1d0;
+  --paper-back: #d9d0bb;
+}
+
+body.night .light {
+  opacity: 1;
+}
+
+/* ── 焦点可见 ─────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+@media (max-width: 820px) {
+  /* 窄屏：照片不缩到看不清，墙内自己滚（见 wall.css 的 .is-scrollable）。
+     四周留白收紧一点，多让给照片。 */
+  .stage {
+    padding: 10px 12px;
+  }
+}
+
+/* ── 矮视口：横屏手机、被压扁的窗口 ─────────────────────────────────────
+   四周的墙边是整块地方最便宜的支出，矮屏上先让它让位，保证照片看得见。
+   ──────────────────────────────────────────────────────────────────── */
+@media (max-height: 620px) {
+  .stage {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

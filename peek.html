@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- 仅开发用：把真实页面装进 iframe，然后按回车触发贴纸的「拿起来看」。
+     Vite 只以 index.html 为入口，所以这个文件不会进 build。 -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>peek</title>
+    <style>
+      html,body{margin:0;height:100%;background:#111;overflow:hidden}
+      iframe{border:0;display:block;width:1440px;height:900px;transform:scale(.62);transform-origin:0 0}
+    </style>
+  </head>
+  <body>
+    <iframe id="f" src="/?light=day"></iframe>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const idx = Number(q.get('i') || 3);
+      const turns = Number(q.get('turns') || 0);
+      const f = document.getElementById('f');
+      f.addEventListener('load', () => {
+        const w = f.contentWindow;
+        const fire = () => {
+          const list = w.document.querySelectorAll('.sticker');
+          const el = list[idx] || list[0];
+          if (!el) { document.title = 'no sticker'; return; }
+          el.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          document.title = 'opened';
+          let n = 0;
+          const step = () => {
+            if (n++ >= turns) return;
+            w.document.querySelector('.loupe__nav--next')?.click();
+            setTimeout(step, 420);
+          };
+          if (turns) setTimeout(step, 500);
+        };
+        setTimeout(fire, 700);
+      });
+    </script>
+  </body>
+</html>

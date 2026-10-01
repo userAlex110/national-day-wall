@@ -1,0 +1,23 @@
+{
+  "name": "national-day-wall",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "devices": "node scripts/preview.mjs",
+    "photos": "node scripts/prepare-photos.mjs",
+    "demo": "node scripts/make-demo-photos.mjs",
+    "og": "node scripts/make-og.mjs",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=national-day-wall --branch=main --commit-dirty=true",
+    "font": "node scripts/build-font.mjs"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "wrangler": "^4.42.0"
+  }
+}

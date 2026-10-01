@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- 仅开发用：Vite 只把 index.html 当入口，这个文件不会进 build -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>断点对照</title>
+    <style>
+      body {
+        margin: 0;
+        background: #1b1b1b;
+        color: #cfcfcf;
+        font: 12px ui-monospace, Menlo, monospace;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        padding: 16px;
+        align-items: flex-start;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        padding: 6px 0;
+      }
+      iframe {
+        border: 1px solid #444;
+        display: block;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="row"></div>
+    <script>
+      const sizes = [
+        ["桌面 1440×900", 1440, 900],
+        ["笔电 1280×800", 1280, 800],
+        ["平板 834×1112", 834, 1112],
+        ["手机 390×844", 390, 844],
+        ["小屏 360×640", 360, 640],
+      ];
+      const night = new URLSearchParams(location.search).get("night") === "1";
+      const row = document.getElementById("row");
+      const SCALE = 0.42; // 只缩放显示，iframe 的布局宽度仍然是真实尺寸
+      for (const [label, w, h] of sizes) {
+        const fig = document.createElement("figure");
+        const cap = document.createElement("figcaption");
+        cap.textContent = label;
+        const f = document.createElement("iframe");
+        f.width = w;
+        f.height = h;
+        f.src = `/?light=${night ? "night" : "day"}`;
+        // transform 不影响 iframe 内部的布局视口，媒体查询仍按真实宽度生效
+        f.style.width = w + "px";
+        f.style.height = h + "px";
+        f.style.transform = `scale(${SCALE})`;
+        f.style.transformOrigin = "0 0";
+        const box = document.createElement("div");
+        box.style.width = w * SCALE + "px";
+        box.style.height = h * SCALE + "px";
+        box.append(f);
+        fig.append(cap, box);
+        row.append(fig);
+      }
+    </script>
+  </body>
+</html>
