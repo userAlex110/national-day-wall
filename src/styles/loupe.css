@@ -82,12 +82,14 @@
   filter: drop-shadow(0 26px 44px rgb(44 34 18 / 0.42));
 }
 
-/* 和墙上同一张冲印件：白边在下方留一条 */
+/* 和墙上同一张冲印件：白边在下方留一条。
+   --band-h 由 JS 在展开白条时写到这个元素上，白边就地在下方长高，照片本身不动。 */
 .loupe__face--front {
   position: relative;
-  padding: 12px 12px 40px;
+  padding: 12px 12px var(--band-h, 40px);
   background: var(--paper);
   box-shadow: 0 1px 0 rgb(255 255 255 / 0.55) inset;
+  transition: padding-bottom 0.34s cubic-bezier(0.34, 0.06, 0.2, 1);
 }
 
 .loupe__face--front img {
@@ -104,16 +106,27 @@
 
 /* ── 白边上那句话 ───────────────────────────────────────────────────
    照片和字都不动，字固定 13px。所以一张照片能装下多少字取决于它多宽：
-   窄的照片白条短，可能只装得下一行。写超了就静默截断，控制台会点名。 */
+   窄的照片白条短，可能只装得下一行。写超了加省略号（-webkit-line-clamp 自带），
+   点一下就地展开，白边长高把整句装下。 */
 .loupe__band {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 0;
-  height: 40px;
+  height: var(--band-h, 40px);
   margin: 0;
   display: flex;
   align-items: center;
+  transition: height 0.34s cubic-bezier(0.34, 0.06, 0.2, 1);
+  /* .loupe__stage 把 pointer-events 关掉了（为了让点击穿到遮罩上），
+     白条得自己开回来才点得动 */
+  pointer-events: auto;
+}
+
+/* 截断或者已经展开时整条都能点，鼠标移上去要看得出来 */
+.loupe__band.is-clamped,
+.loupe__band.is-expanded {
+  cursor: pointer;
 }
 
 .loupe__band-text {
@@ -131,6 +144,43 @@
 
 .loupe__band-text:empty {
   display: none;
+}
+
+/* 截断时右边留出「展开」那两个字的位置，免得盖住最后几个字 */
+.loupe__band.is-clamped .loupe__band-text {
+  padding-right: 38px;
+}
+
+/* 展开后不再截断，整句显示；白边已经被 JS 撑到够高了 */
+.loupe__band.is-expanded .loupe__band-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+/* ── 截断处的「展开 / 收起」提示 ─────────────────────────────────────
+   不接收点击——点它等于点它盖着的那段文字。 */
+.loupe__more {
+  position: absolute;
+  font-family: var(--font-hand);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  color: rgb(43 38 32 / 0.45);
+}
+
+.loupe__more--band {
+  right: 12px;
+  bottom: 11px;
+}
+
+.loupe__more--story {
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  text-align: center;
+  color: rgb(242 237 225 / 0.5);
 }
 
 /* ── 背面 ───────────────────────────────────────────────────────────
@@ -158,28 +208,52 @@
   filter: saturate(0.35) contrast(1.15);
 }
 
-/* 居中用的容器：短故事居中，长故事（超过容器高）会被外层 overflow 裁掉，
-   paint() 里有一步会量出来并在控制台点名。padding 挂在内层文字上，
-   这样这里的 clientHeight 就是「可用高度」，和 offsetHeight 直接可比。 */
+/* 背面的容器。
+   收起时：文字最多 6 行、超出加省略号，整段在卡片里居中。
+   展开时：不再截断，超出就在这一层里滚。
+
+   这里不能用 justify-content: center —— 内容超出容器时 flex 居中会朝
+   两头同时溢出，被 overflow: hidden 一切，上面那截永远滚不到（之前就是这个毛病）。
+   居中改交给子元素的 margin-block: auto：空间够时它吸收余量实现居中，
+   空间不够时归零，内容自然从顶部开始而且整个容器可滚。 */
 .loupe__story {
   position: relative;
   height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   /* .loupe__stage 把 pointer-events 关掉了（为了让点击穿到遮罩上），
-     背面这段字要能选中，所以在这里单独开回来 */
+     背面这段字要能选中、也要能点开，所以在这里单独开回来 */
   pointer-events: auto;
 }
 
+.loupe__story.is-clamped,
+.loupe__story.is-expanded {
+  cursor: pointer;
+}
+
 .loupe__story-text {
-  margin: 0;
+  margin-block: auto;
+  margin-inline: 0;
   padding: 26px 28px;
   font-family: var(--font-hand);
   font-size: 15px;
   line-height: 1.95;
   color: rgb(242 237 225 / 0.92);
+  /* 收起时只给六行，多的加省略号 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.loupe__story.is-expanded .loupe__story-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 .loupe__story:empty {

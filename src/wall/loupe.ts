@@ -48,9 +48,12 @@ interface Parts {
   ghost: HTMLImageElement;
   band: HTMLElement;
   bandText: HTMLElement;
+  /** 白条截断时右下角的「展开」提示。不接收点击，点它等于点白条 */
+  bandMore: HTMLElement;
   /** 背面居中的容器。真正装字的是里层的 storyText，好量溢出 */
   story: HTMLElement;
   storyText: HTMLElement;
+  storyMore: HTMLElement;
   count: HTMLElement;
   prev: HTMLButtonElement;
   next: HTMLButtonElement;
@@ -80,8 +83,10 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     ghost: el("img", "loupe__ghost"),
     band: el("p", "loupe__band"),
     bandText: el("span", "loupe__band-text"),
+    bandMore: el("span", "loupe__more loupe__more--band"),
     story: el("p", "loupe__story"),
     storyText: el("span", "loupe__story-text"),
+    storyMore: el("span", "loupe__more loupe__more--story"),
     count: el("span", "loupe__count"),
     prev: el("button", "loupe__nav loupe__nav--prev"),
     next: el("button", "loupe__nav loupe__nav--next"),
@@ -117,9 +122,9 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   tape.style.setProperty("--tilt", "-2.4deg");
 
   p.band.append(p.bandText);
-  p.front.append(p.img, tape, p.band);
+  p.front.append(p.img, tape, p.band, p.bandMore);
   p.story.append(p.storyText);
-  p.back.append(p.ghost, p.story);
+  p.back.append(p.ghost, p.story, p.storyMore);
   p.flipper.append(p.front, p.back);
   p.print.append(p.flipper);
 
@@ -127,7 +132,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   meta.append(p.count);
 
   const hint = el("p", "loupe__hint");
-  hint.textContent = "点空白处放回去 · 空格翻面";
+  hint.textContent = "点空白处放回去 · 空格翻面 · 点文字看全文";
 
   const stage = el("div", "loupe__stage");
   stage.append(p.print, meta);
@@ -145,6 +150,74 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   let openedAt = 0;
   /** 是不是翻到背面了。看背面时不能翻页，关闭时复位 */
   let flipped = false;
+  /** 白条 / 背面的长文是不是展开着。换一张照片、关闭时都复位 */
+  let bandOpen = false;
+  let storyOpen = false;
+
+  /**
+   * 量一下白条和背面有没有被截断，顺便把「可展开」的状态和提示挂上去。
+   *
+   * 两个都是用 -webkit-line-clamp 截断的。被 clamp 之后 offsetHeight 只剩
+   * 显示出来的那几行，只有 scrollHeight 才是全文高度——所以判断截断必须看
+   * scrollHeight > clientHeight。
+   */
+  function syncClamp(): void {
+    const bandClamped = p.bandText.scrollHeight > p.bandText.clientHeight + 1;
+    const storyClamped = p.storyText.scrollHeight > p.storyText.clientHeight + 1;
+
+    p.band.classList.toggle("is-clamped", bandClamped && !bandOpen);
+    p.story.classList.toggle("is-clamped", storyClamped && !storyOpen);
+
+    p.bandMore.textContent = bandOpen ? "收起" : "展开";
+    p.storyMore.textContent = storyOpen ? "收起" : "展开全部";
+    p.bandMore.hidden = !bandClamped && !bandOpen;
+    p.storyMore.hidden = !storyClamped && !storyOpen;
+    p.bandMore.setAttribute("aria-expanded", String(bandOpen));
+    p.storyMore.setAttribute("aria-expanded", String(storyOpen));
+    p.band.setAttribute("role", bandClamped || bandOpen ? "button" : "presentation");
+    p.story.setAttribute("role", storyClamped || storyOpen ? "button" : "presentation");
+  }
+
+  /** 白条：就地长高，照片本身不动 */
+  function setBandOpen(on: boolean): void {
+    bandOpen = on;
+    p.band.classList.toggle("is-expanded", on);
+    // 顺序要紧：先摘掉 is-clamped（它会占掉右侧那条给「展开」提示的位置），
+    // 再量高度。反过来的话量到的是按更窄的宽度排出来的行数，白边会偏厚。
+    p.band.classList.remove("is-clamped");
+    if (on) {
+      const h = Math.max(40, p.bandText.scrollHeight + 14);
+      p.front.style.setProperty("--band-h", `${h}px`);
+    } else {
+      p.front.style.removeProperty("--band-h");
+    }
+    syncClamp();
+  }
+
+  /** 背面：卡片不动，文字解开截断，超出就在背面里滚 */
+  function setStoryOpen(on: boolean): void {
+    storyOpen = on;
+    p.story.classList.toggle("is-expanded", on);
+    syncClamp();
+    if (on) p.story.scrollTop = 0;
+  }
+
+  function resetOpen(): void {
+    setBandOpen(false);
+    setStoryOpen(false);
+  }
+
+  /**
+   * 点文字任意处切换。拖选文字的那一下不算——不然想选几个字就会把整段收起来。
+   * 没被截断时点了也没反应，不留「点了没用」的错觉。
+   */
+  function wireToggle(el: HTMLElement, isActive: () => boolean, toggle: () => void): void {
+    el.addEventListener("click", () => {
+      if (window.getSelection()?.toString()) return;
+      if (!isActive()) return;
+      toggle();
+    });
+  }
 
   /** 左右翻页按钮的可用状态 */
   function syncNav(): void {
@@ -190,15 +263,17 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     p.storyText.textContent = photo.story ?? "";
     p.count.textContent = list.length > 1 ? `${index + 1} / ${list.length}` : "";
     syncNav();
-    // 白条是固定字号 + 固定两行，背面是固定字号 + 固定容器高——两个都是写超了
-    // 就静默截断。等布局落定再量一次，超了就在控制台点名是哪一张，
-    // 不然只有肉眼能发现。
+    // 换一张照片就把展开状态收回去，别带过来
+    resetOpen();
+    // 量截断要等布局落定。量到截断就在控制台点名是哪一张——
+    // 页面上只是多了个省略号，看不出「超了」，但写的人需要知道。
     requestAnimationFrame(() => {
-      if (p.bandText.scrollHeight > p.bandText.clientHeight + 1) {
-        console.warn(`[loupe] ${photo.id} 的白条放不下，超出被截断：「${photo.caption}」`);
+      syncClamp();
+      if (p.band.classList.contains("is-clamped")) {
+        console.warn(`[loupe] ${photo.id} 的白条放不下，已截断（点它可展开）：「${photo.caption}」`);
       }
-      if (p.storyText.offsetHeight > p.story.clientHeight + 1) {
-        console.warn(`[loupe] ${photo.id} 的背面放不下，超出被截断：「${photo.story}」`);
+      if (p.story.classList.contains("is-clamped")) {
+        console.warn(`[loupe] ${photo.id} 的背面放不下，已截断（点它可展开）：「${photo.story}」`);
       }
     });
   }
@@ -267,6 +342,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     if (!p.root.classList.contains("is-open")) return;
     p.root.classList.remove("is-open");
     setFlipped(false);
+    resetOpen();
     p.prev.disabled = true;
     p.next.disabled = true;
     window.clearTimeout(timer);
@@ -290,6 +366,18 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   p.flip.addEventListener("click", flip);
   p.prev.addEventListener("click", () => turn(-1));
   p.next.addEventListener("click", () => turn(1));
+
+  // 白条和背面的长文：点任意处展开 / 收起
+  wireToggle(
+    p.band,
+    () => p.band.classList.contains("is-clamped") || bandOpen,
+    () => setBandOpen(!bandOpen),
+  );
+  wireToggle(
+    p.story,
+    () => p.story.classList.contains("is-clamped") || storyOpen,
+    () => setStoryOpen(!storyOpen),
+  );
 
   window.addEventListener("keydown", (e) => {
     if (!p.root.classList.contains("is-open")) return;
