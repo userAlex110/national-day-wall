@@ -48,7 +48,9 @@ interface Parts {
   ghost: HTMLImageElement;
   band: HTMLElement;
   bandText: HTMLElement;
+  /** 背面居中的容器。真正装字的是里层的 storyText，好量溢出 */
   story: HTMLElement;
+  storyText: HTMLElement;
   count: HTMLElement;
   prev: HTMLButtonElement;
   next: HTMLButtonElement;
@@ -79,6 +81,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     band: el("p", "loupe__band"),
     bandText: el("span", "loupe__band-text"),
     story: el("p", "loupe__story"),
+    storyText: el("span", "loupe__story-text"),
     count: el("span", "loupe__count"),
     prev: el("button", "loupe__nav loupe__nav--prev"),
     next: el("button", "loupe__nav loupe__nav--next"),
@@ -115,6 +118,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
 
   p.band.append(p.bandText);
   p.front.append(p.img, tape, p.band);
+  p.story.append(p.storyText);
   p.back.append(p.ghost, p.story);
   p.flipper.append(p.front, p.back);
   p.print.append(p.flipper);
@@ -183,14 +187,18 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     p.print.style.setProperty("--c", photo.color);
     p.print.classList.add("loupe__print--print");
     p.bandText.textContent = photo.caption ?? "";
-    p.story.textContent = photo.story ?? "";
+    p.storyText.textContent = photo.story ?? "";
     p.count.textContent = list.length > 1 ? `${index + 1} / ${list.length}` : "";
     syncNav();
-    // 白条是固定字号、固定两行，写超了会被静默截断。等布局落定再量一次，
-    // 超了就在控制台点名是哪一张——不然只有肉眼能发现。
+    // 白条是固定字号 + 固定两行，背面是固定字号 + 固定容器高——两个都是写超了
+    // 就静默截断。等布局落定再量一次，超了就在控制台点名是哪一张，
+    // 不然只有肉眼能发现。
     requestAnimationFrame(() => {
       if (p.bandText.scrollHeight > p.bandText.clientHeight + 1) {
-        console.warn(`[loupe] ${photo.id} 的白条放不下：「${photo.caption}」超出的部分被截断了`);
+        console.warn(`[loupe] ${photo.id} 的白条放不下，超出被截断：「${photo.caption}」`);
+      }
+      if (p.storyText.offsetHeight > p.story.clientHeight + 1) {
+        console.warn(`[loupe] ${photo.id} 的背面放不下，超出被截断：「${photo.story}」`);
       }
     });
   }

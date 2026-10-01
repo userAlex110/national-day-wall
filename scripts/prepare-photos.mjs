@@ -149,8 +149,9 @@ async function main() {
     console.log("photos/ 里没有图片。");
     return;
   }
-  // 按拍摄时间排，没有时间的按文件名排，最后再按文件名兜底。
-  files.sort((a, b) => a.localeCompare(b, "zh"));
+  // 按文件名排。numeric: true 是必须的——文件名约定是「序号 + 后缀」（1x、2x…21x），
+  // 而默认的字典序会把 10x 排在 2x 前面，1x 掉到第 11 位，墙上顺序全乱。
+  files.sort((a, b) => a.localeCompare(b, "zh", { numeric: true }));
 
   const cache = await loadCache();
   const results = [];
