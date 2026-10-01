@@ -195,15 +195,33 @@ ls dist/photos/     # 空的
 
 ### 仓库里为什么没有照片
 
-`.gitignore` 挡了两层：
+`.gitignore` 挡了四样，全都是「跟着各人自己的照片走」的东西：
 
-- `/photos/` —— 你丢进去的相机原图（5MB+，带 EXIF）
-- `/public/photos/` —— `npm run photos` 转出来的 webp/svg 派生图
+| 挡掉的 | 是什么 | 为什么 |
+|---|---|---|
+| `/photos/` | 你丢进去的相机原图 | 5MB+，带 EXIF，是私人东西 |
+| `/public/photos/` | `npm run photos` 转出来的 webp/svg | 别人的站不该印着你的照片 |
+| `/src/data/photos.json` | 照片清单（生成的） | 指向上面的图，不跟着走的话就是一份指向空处的清单 |
+| `/captions.json` | 你写的那几句话 | 有私人内容；而且 README 让人把照片命名成 `1x`/`2x`，留在这里别人那张 1x 会被配上你的文案 |
+| `/public/og.jpg` | 分享卡片（`npm run og` 生成） | **它里面印着照片本身** |
 
-`src/data/photos.json`（照片清单）也是生成的、不进库。所以**别人 clone 下来
-`npm install && npm run dev` 会看到一面占位墙**——`package.json` 里的
-`predev` / `prebuild` 钩子发现清单不在，会自动跑一遍 `npm run demo` 铺上。
-自己拍了照片之后按第一节走 `npm run photos` 覆盖掉就行。
+结果是：**别人 clone 下来 `npm install && npm run dev` 会看到一面占位墙**，
+`package.json` 里的 `predev` / `prebuild` 钩子会补上缺的那几样：
+
+```
+src/data/photos.json 不在（刚 clone 下来都是这样），先铺一面占位墙…
+占位图 21 张 → public/photos/
+photos.json → src/data/photos.json
+public/og.jpg 不在，用占位墙生成一张分享卡片…
+og.jpg → 1200×630 35KB
+```
+
+自己拍了照片之后按第一节走 `npm run photos`、`npm run og` 覆盖掉就行。
+`captions.json` 不用建，缺了 `prepare-photos.mjs` 会把文案留空（第 308 行），不报错。
+
+> **代价要说清楚**：`captions.json` 不进库意味着**你写的那几句话没有版本历史**。
+> 在意的话可以单独存一份，或者接受它只是本地文件——反正 `npm run deploy`
+> 上传的是本地 `dist/`，不影响上线。
 
 ---
 
@@ -260,6 +278,7 @@ npm install
 npm run dev            # 先看到一面占位墙，说明跑起来了
 # 把自己的照片丢进 photos/，按第一节命名
 npm run photos
+npm run og             # 重画分享卡片 —— 不然分享出去的是作者的占位图
 npx wrangler login     # 第一次
 npm run deploy
 ```

@@ -29,6 +29,17 @@ preview/
 # 打开就是一面裂图。缺文件时 scripts/ensure-photos.mjs 会自动铺一面占位墙。
 /src/data/photos.json
 
+# 各人自己写的文案（白条短句 + 背面故事）。
+# 不进库有两个原因：一是有私人内容（写了在哪儿拍的），
+# 二是 README 让人把照片命名成 1x / 2x —— 留在这里的话，
+# 别人 fork 之后他们自己那张 1x 会莫名其妙被配上你的文案。
+# 没有这个文件时 prepare-photos.mjs 会把文案留空，不会报错。
+/captions.json
+
+# 分享卡片（npm run og 生成）。**它里面印着照片本身**，所以也不进库。
+# 缺了会被 scripts/ensure-photos.mjs 用占位墙重新生成一张。
+/public/og.jpg
+
 # prepare-photos.mjs 的增量缓存：记的是本机文件的 mtime + size，
 # 换台机器就完全失效，不该进版本库
 .cache.json
