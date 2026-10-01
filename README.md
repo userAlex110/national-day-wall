@@ -168,6 +168,43 @@ npx wrangler login
 不想用 Cloudflare 也行——`npm run build` 出来的 `dist/` 是纯静态文件，
 丢到任何静态托管（Vercel / Netlify / GitHub Pages / 自己的服务器）都能跑。
 
+### 为什么这里没有「推送即自动部署」
+
+**照片不进版本库**（见 `.gitignore`），所以任何 CI 从仓库构建出来的都是一面
+**占位墙**——`dist/photos/` 是空的。让 CI 去覆盖你自己那个有照片的站，等于把照片全删了。
+
+所以分工是：
+
+| | 干什么 |
+|---|---|
+| **GitHub** | 存代码、给别人看和 fork。`.github/workflows/ci.yml` 每次推送跑一次 `npm run build`，只验证「能不能构建」 |
+| **本地 `npm run deploy`** | 真正上线。只有在你这台有照片的机器上，`public/photos/` 才是齐的 |
+
+想验证这一点，自己跑一遍就知道：
+
+```bash
+git clone <你的仓库> /tmp/x && cd /tmp/x && npm ci && npm run build
+ls dist/photos/     # 空的
+```
+
+> 如果你确实想要一个「推送就自动部署」的站，那得是一个**独立的演示项目**，
+> 部署的是占位墙，和自己的正式站分开。做法：`npx wrangler pages project create
+> national-day-wall-demo`，再建一个 `CLOUDFLARE_API_TOKEN` 的仓库 secret，
+> 加一条 `wrangler pages deploy dist --project-name=national-day-wall-demo` 的
+> workflow。别指向正式站。
+
+### 仓库里为什么没有照片
+
+`.gitignore` 挡了两层：
+
+- `/photos/` —— 你丢进去的相机原图（5MB+，带 EXIF）
+- `/public/photos/` —— `npm run photos` 转出来的 webp/svg 派生图
+
+`src/data/photos.json`（照片清单）也是生成的、不进库。所以**别人 clone 下来
+`npm install && npm run dev` 会看到一面占位墙**——`package.json` 里的
+`predev` / `prebuild` 钩子发现清单不在，会自动跑一遍 `npm run demo` 铺上。
+自己拍了照片之后按第一节走 `npm run photos` 覆盖掉就行。
+
 ---
 
 ## 四、把这面墙改成你自己的
@@ -195,6 +232,41 @@ npm run dev
 
 `poster.html` 和 `peek.html`、`dev-harness.html` 一样是**仅开发用**的：
 Vite 只以 `index.html` 为入口，所以这些文件不会进 `dist/`。
+
+### fork 下来要改哪几处
+
+假设你的 Cloudflare Pages 项目叫 `my-wall`、域名是 `my-wall.pages.dev`，
+**一共四处，两个文件**：
+
+| # | 文件 | 改什么 |
+|---|---|---|
+| 1 | `index.html` | `og:image` 和 `og:url` 里的 `https://national-day-wall.pages.dev` → 你的域名。**这两行最要紧**：微信和小红书不执行 JS，`og:*` 是它们唯一读得到的东西 |
+| 2 | `package.json` | `deploy` 脚本里的 `--project-name=national-day-wall` → 你的项目名；顺手把上面那行 `"name"` 也换掉 |
+| 3 | `scripts/make-og.mjs`（可选） | 分享卡片上印的字：`title` / `sub` / `sub2`，改完跑 `npm run og` |
+| 4 | `scripts/make-demo-photos.mjs`（可选） | 还没放真照片时，那面占位墙上写什么：`LINES`（白条）和 `STORIES`（背面） |
+
+改完自己核一遍，除了上面这几处不该再有别的：
+
+```bash
+grep -rn "national-day-wall" --include="*.ts" --include="*.mjs" \
+  --include="*.json" --include="*.html" --include="*.yml" . \
+  | grep -v node_modules | grep -v package-lock
+```
+
+然后：
+
+```bash
+npm install
+npm run dev            # 先看到一面占位墙，说明跑起来了
+# 把自己的照片丢进 photos/，按第一节命名
+npm run photos
+npx wrangler login     # 第一次
+npm run deploy
+```
+
+> **别人的仓库里没有照片，这是故意的。** 你 fork 之后 `public/photos/` 是空的，
+> `predev` 钩子会自动铺一面占位墙让你先看到东西；丢进自己的照片跑 `npm run photos`
+> 就会覆盖掉。**不要**去把 `public/photos/` 提交进自己的仓库——那是别人自己的照片。
 
 ---
 

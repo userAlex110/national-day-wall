@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/ensure-photos.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/ensure-photos.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "devices": "node scripts/preview.mjs",

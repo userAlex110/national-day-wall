@@ -10,12 +10,24 @@ preview/
 .dev.vars
 .og.tmp.svg
 
-# 真实照片：体积大，且各人本地的相机原图不一样。
+# 真实照片：体积大，而且是各人自己的东西，不该跟着代码走。
 #
-# 注意这一条会同时匹配 photos/ 和 public/photos/ —— 后者是 npm run photos
-# 生成出来的 webp。如果想让生成物进版本库（clone 下来就能直接 build），
-# 把它拆成 `/photos/` 和 `!/public/photos/` 两条。
-photos/
+# 两条分开写是有意的：
+#   /photos/         你丢进去的相机原图（5MB+，还带 EXIF）
+#   /public/photos/  npm run photos 从原图转出来的 webp/svg 派生图
+#
+# 派生图其实只有 860KB，想让仓库自包含、clone 下来直接 build 出成品墙的话，
+# 可以把下面第二条换成：
+#     /public/photos/*
+#     !/public/photos/p*.svg      ← 只留占位图
+# 但那样别人 fork 之后看到的会是**你的照片**，做模板仓库时不要这么干。
+/photos/
+/public/photos/
+
+# photos.json 是 npm run photos / npm run demo 生成的，跟着照片走。
+# 不写这一条的话，别人 clone 下来会拿到一份指向「不存在的图片」的清单，
+# 打开就是一面裂图。缺文件时 scripts/ensure-photos.mjs 会自动铺一面占位墙。
+/src/data/photos.json
 
 # prepare-photos.mjs 的增量缓存：记的是本机文件的 mtime + size，
 # 换台机器就完全失效，不该进版本库
