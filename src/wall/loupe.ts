@@ -9,11 +9,21 @@
  * 背面那句话从墙上的贴纸搬到了这里——一百像素的贴纸翻过来根本读不了。
  */
 import type { Photo } from "../data/config";
+import { Spring } from "../core/spring";
+import { ticker } from "../core/ticker";
 
 const TURN_OUT = 190;
 const TURN_IN = 340;
 const LIFT = 440;
 const EASE_OUT = "cubic-bezier(0.16, 0.84, 0.28, 1)";
+
+/** 拖拽翻页的三个门槛 */
+const TAP_SLOP = 6;
+/** 甩动的速度线，px/ms。快速划一下就算翻，不用划够远 */
+const FLICK = 0.45;
+/** 提交位移取照片宽的四分之一，封顶 140px——照片越宽越难推动 */
+const COMMIT_RATIO = 0.25;
+const COMMIT_MAX = 140;
 
 export interface Loupe {
   open(photo: Photo, from: HTMLElement, list: Photo[]): void;
@@ -31,6 +41,14 @@ interface Parts {
   close: HTMLButtonElement;
   flip: HTMLButtonElement;
   print: HTMLElement;
+  /**
+   * 拖拽专用的一层，和 flipper 同一个道理。
+   *
+   * 开合与翻页的 WAAPI 写 .loupe__print 的 transform，翻面的 transition 写
+   * .loupe__flipper 的。拖拽要是也去挤这两个元素，第三个系统就会把前两个盖掉。
+   * 所以三层各管各的：drag 只被内联 style 驱动，谁也不碰。
+   */
+  drag: HTMLElement;
   /**
    * 翻面专用的一层。
    *
@@ -76,6 +94,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     close: el("button", "loupe__close"),
     flip: el("button", "loupe__flip"),
     print: el("figure", "loupe__print"),
+    drag: el("div", "loupe__drag"),
     flipper: el("div", "loupe__flipper"),
     front: el("div", "loupe__face loupe__face--front"),
     back: el("div", "loupe__face loupe__face--back"),
@@ -132,10 +151,14 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   meta.append(p.count);
 
   const hint = el("p", "loupe__hint");
-  hint.textContent = "点空白处放回去 · 空格翻面 · 点文字看全文";
+  hint.textContent = "拖一拖或按 ← → 翻页 · 点照片翻面 · 点空白处放回去 · 点文字看全文";
+
+  // 照片和下面那行计数一起装进 drag：翻页时它们该作为一个整体被推开。
+  // stage 只剩定位和 perspective——翻面的透视要包住 flipper，中间插一层不影响。
+  p.drag.append(p.print, meta);
 
   const stage = el("div", "loupe__stage");
-  stage.append(p.print, meta);
+  stage.append(p.drag);
 
   p.root.append(p.scrim, stage, p.prev, p.next, p.flip, p.close, hint);
   document.body.append(p.root);
@@ -153,6 +176,25 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   /** 白条 / 背面的长文是不是展开着。换一张照片、关闭时都复位 */
   let bandOpen = false;
   let storyOpen = false;
+
+  /**
+   * 拖拽这一摊的状态。
+   *
+   * 指针事件挂在遮罩上，不挂在照片上：.loupe__stage 是 pointer-events: none
+   * （为了让点击穿到遮罩上），照片区域的 pointerdown 压根收不到，只会穿到遮罩。
+   * 遮罩本来就是那个「接住一切非交互点击」的面。
+   */
+  let pid = -1;
+  let startX = 0;
+  let lastX = 0;
+  let lastT = 0;
+  /** 这次按下累计的最大横向位移。超过 TAP_SLOP 才算「在拖」而不是「在点」 */
+  let dragged = 0;
+  /** 抬手瞬间的瞬时速度，px/ms，用来判「快速划一下」 */
+  let vel = 0;
+  /** 往回弹的弹簧。ticker 空闲时完全停机，只有弹回去那几百毫秒在跑 */
+  const dragX = new Spring(0, 260, 26);
+  let dragSub: symbol | null = null;
 
   /**
    * 量一下白条和背面有没有被截断，顺便把「可展开」的状态和提示挂上去。
@@ -209,12 +251,21 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
 
   /**
    * 点文字任意处切换。拖选文字的那一下不算——不然想选几个字就会把整段收起来。
-   * 没被截断时点了也没反应，不留「点了没用」的错觉。
+   * 没被截断时点了也没反应，不留「点了没用」的错觉；除非调用方给了 onIdle
+   * （背面用它来翻回正面，见下面 wireToggle 的第四个参数）。
    */
-  function wireToggle(el: HTMLElement, isActive: () => boolean, toggle: () => void): void {
+  function wireToggle(
+    el: HTMLElement,
+    isActive: () => boolean,
+    toggle: () => void,
+    onIdle?: () => void,
+  ): void {
     el.addEventListener("click", () => {
       if (window.getSelection()?.toString()) return;
-      if (!isActive()) return;
+      if (!isActive()) {
+        onIdle?.();
+        return;
+      }
       toggle();
     });
   }
@@ -227,6 +278,21 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     // 看背面的时候禁掉翻页：先翻回正面才谈得上翻下一张
     p.prev.disabled = flipped;
     p.next.disabled = flipped;
+    // 只有一张照片就没有「拖」这回事，光标也不该摆出 grab 的样子
+    p.root.classList.toggle("can-drag", many);
+  }
+
+  /**
+   * 提示语。只有一张照片时别提翻页——根本没有下一张。
+   *
+   * 这行只在有键盘的那一档露脸（CSS 里窄屏和 coarse pointer 都藏了），
+   * 所以两种文案都按「有键盘」来写。
+   */
+  function syncHint(): void {
+    hint.textContent =
+      list.length > 1
+        ? "拖一拖或按 ← → 翻页 · 点照片翻面 · 点空白处放回去 · 点文字看全文"
+        : "点照片翻面 · 点空白处放回去 · 点文字看全文";
   }
 
   /** 只改状态和类名，动画交给 CSS 的 transition。开合与关闭时也用它复位 */
@@ -240,7 +306,8 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
   }
 
   function flip(): void {
-    if (!list[index]) return;
+    // 翻页的外飞段照片在飞，这时候翻面会让刚换上的照片停在背面
+    if (busy || !list[index]) return;
     setFlipped(!flipped);
   }
 
@@ -263,6 +330,7 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     p.storyText.textContent = photo.story ?? "";
     p.count.textContent = list.length > 1 ? `${index + 1} / ${list.length}` : "";
     syncNav();
+    syncHint();
     // 换一张照片就把展开状态收回去，别带过来
     resetOpen();
     // 量截断要等布局落定。量到截断就在控制台点名是哪一张——
@@ -286,14 +354,24 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     }
   }
 
-  function turn(dir: number): void {
+  /**
+   * 翻下一张 / 上一张。
+   *
+   * fromX 是「外飞」动画的起始横向位移，只有拖拽松手时会传——那时照片已经被
+   * 推到 dx 了，外飞得从那儿接着走才接得上。按钮和方向键不传，fromX 就是 0，
+   * 头一帧是恒等变换，动画和以前逐帧一样。
+   */
+  function turn(dir: number, fromX = 0): void {
     // 看背面的时候不能翻页：先翻回正面
     if (busy || flipped || list.length < 2) return;
     busy = true;
-    p.print.style.setProperty("--dir", String(dir));
     play(
       [
-        { transform: `translateX(${(dir * 30).toFixed(1)}px) scale(.982)`, opacity: 0 },
+        { transform: `translateX(${fromX.toFixed(1)}px) scale(1)`, opacity: 1 },
+        {
+          transform: `translateX(${(fromX + dir * 30).toFixed(1)}px) scale(.982)`,
+          opacity: 0,
+        },
       ],
       TURN_OUT,
       "ease-in",
@@ -349,19 +427,159 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     anim?.cancel();
     anim = null;
     busy = false;
+    // 拖到一半关掉（比如按了 Esc），别把位移留在 drag 层上
+    pid = -1;
+    dragged = 0;
+    p.root.classList.remove("is-dragging");
+    dragX.reset(0);
+    paintDrag();
     opts.onToggle?.(false);
     restore?.focus();
     restore = null;
   }
 
-  p.scrim.addEventListener("click", () => {
+  /**
+   * 拖拽位移唯一的出口。手指跟手和松手回弹都走这里，
+   * 保证「跟手」和「弹回」之间不会因为写了两套而手感不一致。
+   */
+  function paintDrag(): void {
+    const x = dragX.value;
+    p.drag.style.transform = x ? `translate3d(${x.toFixed(2)}px, 0, 0)` : "";
+    // 推过提交线就压暗一点，给「再推就翻了」一点提示
+    p.root.classList.toggle("is-armed", Math.abs(x) > commitDist());
+  }
+
+  /** 提交线取照片宽的四分之一，但封顶——不然大照片怎么推都不够 */
+  function commitDist(): number {
+    return Math.min(COMMIT_MAX, p.print.offsetWidth * COMMIT_RATIO);
+  }
+
+  /**
+   * 松手的位置是不是落在相纸上。
+   *
+   * 相纸整条链（stage / drag / print / flipper / face）都继承了 pointer-events: none，
+   * 点它等于点遮罩——所以「点的是照片还是空白」只能自己量。量 print 的 rect 就够。
+   * 用 rect 而不是给相纸开 pointer-events: auto，是因为开了它就收不到 pointerdown，
+   * 拖拽翻页会当场失灵（监听器在遮罩上，遮罩不是相纸的祖先）。
+   */
+  function overPrint(clientX: number, clientY: number): boolean {
+    const r = p.print.getBoundingClientRect();
+    return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+  }
+
+  /** 松手没推够，弹回原位。减弱动态效果时这一步直接省略 */
+  function springBack(): void {
+    if (reduced) {
+      dragX.reset(0);
+      paintDrag();
+      return;
+    }
+    if (dragSub) return;
+    dragX.target = 0;
+    // tick 返回 false 表示静止，ticker 会自己把这个订阅摘掉，空闲时 rAF 停机
+    dragSub = ticker.add((dt) => {
+      const done = dragX.step(dt);
+      paintDrag();
+      if (done) dragSub = null;
+      return !done;
+    });
+  }
+
+  p.scrim.addEventListener("click", (e) => {
     // 点照片打开 loupe 的那次 pointerup 之后，浏览器还会补发一个兼容性的 click。
     // 那时 pointerup 目标上的指针捕获已经释放，浏览器改为在松手位置重新做命中测试——
     // 而那个位置最上层正好是刚显示出来的 scrim，于是 loupe 被自己刚打开的这一下
     // 立刻关掉，表现成「点照片完全没反应」。刚打开的这一个不算数。
     if (performance.now() - openedAt < 400) return;
-    close();
+    // 拖完松手浏览器同样会补一个 click。不挡掉的话，每翻一页都会顺手把 loupe 关了。
+    if (dragged > TAP_SLOP) return;
+    // 上面这两道守卫挡的 click 恰好都落在相纸上，所以必须在命中测试之前返回，
+    // 否则「点开大图」和「拖拽翻页」都会顺带翻一次面。
+    // 点在相纸上 = 翻面，点在空白 = 放回墙上。
+    // 翻到背面之后点击走不到这儿——.loupe__story 是 pointer-events:auto，铺满整个背面。
+    if (overPrint(e.clientX, e.clientY)) flip();
+    else close();
   });
+
+  /**
+   * 拖拽翻页。手指划和鼠标拖是同一套 pointer 事件，不按设备分叉。
+   *
+   * 监听器挂在遮罩上而不是照片上：.loupe__stage 是 pointer-events: none，
+   * 照片区域的 pointerdown 压根收不到，永远只会穿到遮罩这一层。
+   */
+  p.scrim.addEventListener("pointerdown", (e) => {
+    if (pid !== -1) return;
+    // 正在翻页 / 看背面 / 只有一张：都不该起手
+    if (busy || flipped || list.length < 2) return;
+    if (e.button !== 0) return;
+    // 正在选文字就别抢人家的事
+    if (window.getSelection()?.toString()) return;
+    // 白条和背面各自 pointer-events: auto：选字、滚动、点开展开都在那儿，不该被拖走
+    if (e.target instanceof Element && e.target.closest(".loupe__band, .loupe__story")) {
+      return;
+    }
+
+    pid = e.pointerId;
+    p.scrim.setPointerCapture(pid);
+    startX = lastX = e.clientX;
+    lastT = performance.now();
+    dragged = 0;
+    vel = 0;
+  });
+
+  p.scrim.addEventListener("pointermove", (e) => {
+    if (pid === -1 || e.pointerId !== pid) return;
+    const dx = e.clientX - startX;
+    // 横向没超过一点点之前一律不动照片，免得一次普通点按把它抖一下
+    if (dragged <= TAP_SLOP && Math.abs(dx) <= TAP_SLOP) return;
+
+    const now = performance.now();
+    const dt = Math.max(1, now - lastT);
+    dragged = Math.max(dragged, Math.abs(dx));
+    vel = (e.clientX - lastX) / dt;
+    lastX = e.clientX;
+    lastT = now;
+
+    p.root.classList.add("is-dragging");
+    dragX.reset(dx);
+    paintDrag();
+  });
+
+  const endDrag = (e: PointerEvent, cancelled: boolean): void => {
+    if (pid === -1 || e.pointerId !== pid) return;
+    try {
+      p.scrim.releasePointerCapture(pid);
+    } catch {
+      /* 指针已消失 */
+    }
+    const wasDragging = dragged > TAP_SLOP;
+    pid = -1;
+    p.root.classList.remove("is-dragging");
+
+    // 只是一次点按：transform 从没动过，让遮罩的 click 照常把 loupe 关掉
+    if (!wasDragging) return;
+
+    const x = dragX.value;
+    // 停了一会儿再松手就不算「甩」了——那一瞬人其实是停着的，
+    // 拿最后一次 pointermove 算出来的速度会把人误判成想翻页
+    const speed = performance.now() - lastT > 90 ? 0 : vel;
+    // 甩动的方向说了算：拖到一半往回划一下，就该翻回上一张
+    const dir = speed !== 0 ? Math.sign(speed) : Math.sign(x);
+
+    if (!cancelled && (Math.abs(speed) >= FLICK || Math.abs(x) >= commitDist())) {
+      // 父层归零、子层从 x 接着外飞，两层一加，视觉上就是从手指放开的地方继续走
+      dragX.reset(0);
+      paintDrag();
+      turn(dir, x);
+    } else {
+      springBack();
+    }
+  };
+
+  p.scrim.addEventListener("pointerup", (e) => endDrag(e, false));
+  // 系统手势抢走、或者指针捕获意外丢失：一律弹回，绝不当作翻页
+  p.scrim.addEventListener("pointercancel", (e) => endDrag(e, true));
+  p.scrim.addEventListener("lostpointercapture", (e) => endDrag(e, true));
   p.close.addEventListener("click", close);
   p.flip.addEventListener("click", flip);
   p.prev.addEventListener("click", () => turn(-1));
@@ -377,6 +595,9 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     p.story,
     () => p.story.classList.contains("is-clamped") || storyOpen,
     () => setStoryOpen(!storyOpen),
+    // 故事放得下时这一层是整个背面（height:100%），点击全落在这儿，到不了遮罩，
+    // 翻回来只能从这里走。故事被截断时仍然是展开/收起优先，翻面得用右上角那颗按钮。
+    flip,
   );
 
   window.addEventListener("keydown", (e) => {
@@ -411,6 +632,11 @@ export function mountLoupe(opts: LoupeOpts = {}): Loupe {
     openedAt = performance.now();
     // 每次打开都从正面开始。翻页按钮的可用状态由 paint() 里的 syncNav() 算。
     setFlipped(false);
+    // 上一次没弹回去的位移别带过来
+    pid = -1;
+    dragged = 0;
+    dragX.reset(0);
+    paintDrag();
 
     p.root.classList.add("is-open");
     opts.onToggle?.(true);

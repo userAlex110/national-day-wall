@@ -32,21 +32,60 @@
   backdrop-filter: blur(22px) saturate(0.82) brightness(0.94);
   cursor: zoom-out;
   -webkit-tap-highlight-color: transparent;
+  /* 横向手势归拖拽翻页，纵向留给页面自己。这里其实不滚，但写明意图，
+     免得以后有人在上面加滚动区时踩坑 */
+  touch-action: pan-y;
 }
 
+/* 有多张可翻时，遮罩是一个可以「抓住拖」的东西 */
+.loupe.can-drag .loupe__scrim {
+  cursor: grab;
+}
+
+.loupe.is-dragging,
+.loupe.is-dragging .loupe__scrim {
+  cursor: grabbing;
+  /* 不然拖一下会顺带把照片上的字选中一片 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 推过提交线，压暗一点点。这是拖拽的「咔哒」声 */
+.loupe.is-armed .loupe__print {
+  opacity: 0.88;
+}
+
+/* 只剩定位和 perspective。flex 布局搬给了下面的 .loupe__drag——
+   照片和下面那行计数要作为一个整体被拖走，布局得跟着一起搬。
+   perspective 留在这层：它只要包住 .loupe__flipper，中间插一层不影响。 */
 .loupe__stage {
   position: absolute;
   inset: 0;
   margin: 0;
+  pointer-events: none;
+  /* 翻面要有透视才像真的翻过去，不然只是横向压扁 */
+  perspective: 1600px;
+}
+
+/* 拖拽层。transform 只由 JS 写内联 style，这里绝不能挂 transition——
+   一挂就跟不上手指，松手回弹也会被这条过渡接管。
+
+   transform-style: preserve-3d 是**必须**的，别手贱删。
+   插到 stage 和 print 中间就把原本的 3D 上下文切断了一层：stage 的 perspective
+   只作用到直接子元素，而 transform-style 默认是 flat，会把下面所有后代压平到
+   自己所在的那个面上。少了这一行，.loupe__flipper 的 rotateY 就退化成不带透视的
+   横向压扁——正是 stage 上那句注释（「翻面要有透视才像真的翻过去，不然只是横向压扁」）
+   一直在防的那个毛病。 */
+.loupe__drag {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: clamp(14px, 2.4vh, 26px);
   padding: clamp(56px, 9vh, 88px) 20px clamp(52px, 8vh, 76px);
-  pointer-events: none;
-  /* 翻面要有透视才像真的翻过去，不然只是横向压扁 */
-  perspective: 1600px;
+  height: 100%;
+  transform-style: preserve-3d;
+  will-change: transform;
 }
 
 /* 相纸本体。宽度由图片决定，白边包在图片外面。
@@ -415,6 +454,14 @@
     right: 12px;
   }
 
+  .loupe__hint {
+    display: none;
+  }
+}
+
+/* 触屏看不到这行提示：没有键盘可按，箭头和空格都是空的。
+   上面 820px 那条只管手机，平板和小号触屏笔记本在宽窗口里也得藏。 */
+@media (hover: none) and (pointer: coarse) {
   .loupe__hint {
     display: none;
   }
